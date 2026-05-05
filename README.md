@@ -27,6 +27,47 @@ go build ./cmd/pieracoin
 - `POST /transaction` - Submit transaction
 - `GET /wallet/generate` - Generate new wallet
 
+## Keeping Render Service Alive
+
+Render free tier services sleep after 15 minutes of inactivity. To prevent this:
+
+### Option 1: External Uptime Monitor (Recommended)
+1. Sign up for [UptimeRobot](https://uptimerobot.com) (free tier available)
+2. Add your Render URL (e.g., `https://pieracoin.onrender.com/health`)
+3. Set monitoring interval to 5 minutes
+4. UptimeRobot will send pings automatically
+
+### Option 2: Cron Job Service
+Use [cron-job.org](https://cron-job.org) or similar:
+- URL: `https://your-render-url.onrender.com/health`
+- Schedule: Every 10 minutes
+- Method: GET
+
+### Option 3: Browser Automation
+Keep a browser tab open with a simple HTML page that refreshes every 10 minutes:
+
+```html
+<!DOCTYPE html>
+<html>
+<head>
+    <title>PieraCoin Keep Alive</title>
+    <script>
+        setInterval(() => {
+            fetch('https://your-render-url.onrender.com/health')
+                .then(response => console.log('Ping sent'))
+                .catch(error => console.log('Ping failed'));
+        }, 600000); // 10 minutes
+    </script>
+</head>
+<body>
+    <h1>PieraCoin is alive!</h1>
+</body>
+</html>
+```
+
+### Internal Auto-Ping
+The application includes an internal auto-ping mechanism that pings `/health` every 10 minutes to keep the process active. However, **this does not prevent Render from shutting down the service** - Render requires external HTTP traffic.
+
 ## Deployment on Render
 
 1. **Push to Git Repository**

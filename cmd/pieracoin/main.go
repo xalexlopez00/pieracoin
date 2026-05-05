@@ -29,16 +29,39 @@ func main() {
 	net := network.NewNetwork(bc, cons, wal, sec, met, logger)
 
 	// Start server
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "8080"
+	}
 	srv := &http.Server{
-		Addr:    ":8080",
+		Addr:    ":" + port,
 		Handler: net.Router(),
 	}
 
 	// Graceful shutdown
 	go func() {
-		logger.Info().Msg("Starting PieraCoin node on :8080")
+		logger.Info().Str("port", port).Msg("Starting PieraCoin node")
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			logger.Fatal().Err(err).Msg("Server failed to start")
+		}
+	}()
+
+	// Auto-ping to keep internal process alive (Note: This doesn't prevent Render shutdown)
+	go func() {
+		ticker := time.NewTicker(10 * time.Minute)
+		defer ticker.Stop()
+		client := &http.Client{Timeout: 5 * time.Second}
+		for {
+			select {
+			case <-ticker.C:
+				resp, err := client.Get("http://localhost:" + port + "/health")
+				if err != nil {
+					logger.Warn().Err(err).Msg("Auto-ping failed")
+				} else {
+					resp.Body.Close()
+					logger.Debug().Msg("Auto-ping successful")
+				}
+			}
 		}
 	}()
 
