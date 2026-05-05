@@ -11,18 +11,46 @@ PieraCoin is an enterprise-grade blockchain implementation designed for high ava
 - **Observability**: Structured logging, Prometheus metrics
 - **Secure Deployment**: Distroless Docker image
 
-## Building
+## Quick Start
 
 ```bash
 go mod tidy
 go build ./cmd/pieracoin
-```
-
-## Running
-
-```bash
 ./pieracoin
 ```
+
+## API Endpoints
+
+- `GET /health` - Health check
+- `GET /metrics` - Prometheus metrics
+- `POST /mine` - Mine a new block
+- `POST /transaction` - Submit transaction
+- `GET /wallet/generate` - Generate new wallet
+
+## Deployment on Render
+
+1. **Push to Git Repository**
+   ```bash
+   git add .
+   git commit -m "Ready for deployment"
+   git push origin main
+   ```
+
+2. **Connect to Render**
+   - Go to [Render Dashboard](https://dashboard.render.com)
+   - Click "New" → "Web Service"
+   - Connect your Git repository
+   - Select "Docker" as runtime
+   - Set build command: (leave default)
+   - Set start command: (leave default, uses Dockerfile CMD)
+
+3. **Environment Variables**
+   - Render automatically sets `PORT`
+   - No additional env vars needed
+
+4. **Health Check**
+   - Set health check path: `/health`
+   - Render will monitor the endpoint
 
 ## Testing
 
