@@ -5,6 +5,9 @@
 *.so
 *.dylib
 
+# EXCEPT: Allow release/ executables
+!release/*.exe
+
 # Test binary, built with `go test -c`
 *.test
 
