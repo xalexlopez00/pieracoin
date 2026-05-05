@@ -1,199 +1,211 @@
 #!/usr/bin/env python3
 """
-PieraCoin User Wallet
-For regular users. No admin privileges.
-Features: Generate wallets, check balances, view blockchain
+PieraCoin Miner & Wallet
+User GUI with local mining effort, wallet generation, balances and history.
 """
 
-import requests
 import json
 import os
-from colorama import Fore, Style, init
+import threading
+import time
+import hashlib
 
-# Initialize colorama for colored output
-init(autoreset=True)
+import customtkinter as ctk
+import requests
+from tkinter import messagebox
 
-# Server configuration (from environment or default)
-SERVER_URL = os.getenv("SERVER_URL", "http://localhost:8080")
+ctk.set_appearance_mode("dark")
+ctk.set_default_color_theme("blue")
 
-def print_banner():
-    """Print application banner"""
-    print(f"{Fore.CYAN}{'='*60}")
-    print(f"{Fore.CYAN}💰 PieraCoin User Wallet v1.0")
-    print(f"{Fore.CYAN}{'='*60}{Style.RESET_ALL}\n")
+DEFAULT_SERVER = os.getenv("SERVER_URL", "https://pieracoin.onrender.com")
 
-def generate_wallet():
-    """Generate a new wallet with mnemonic seed phrase"""
-    try:
-        print(f"{Fore.YELLOW}Generating new wallet...{Style.RESET_ALL}")
-        response = requests.get(
-            f"{SERVER_URL}/wallet/generate",
-            timeout=10
-        )
-        if response.status_code == 200:
-            data = response.json()
-            mnemonic = data.get("mnemonic", "")
-            print(f"\n{Fore.GREEN}✓ New Wallet Generated!{Style.RESET_ALL}")
-            print(f"\n{Fore.RED}⚠️  SAVE THIS SEED PHRASE SECURELY:{Style.RESET_ALL}")
-            print(f"{Fore.YELLOW}{mnemonic}{Style.RESET_ALL}")
-            print(f"\n{Fore.RED}⚠️  Never share this phrase with anyone!{Style.RESET_ALL}")
-            print(f"\nYou can use this phrase to recover your wallet later.")
-        else:
-            print(f"{Fore.RED}✗ Error: {response.status_code}{Style.RESET_ALL}")
-            print(response.text)
-    except requests.exceptions.ConnectionError:
-        print(f"{Fore.RED}✗ Error: Cannot connect to server at {SERVER_URL}{Style.RESET_ALL}")
-    except Exception as e:
-        print(f"{Fore.RED}✗ Error: {str(e)}{Style.RESET_ALL}")
+class UserWalletApp(ctk.CTk):
+    def __init__(self):
+        super().__init__()
+        self.title("PieraCoin Miner & Wallet")
+        self.geometry("960x720")
+        self.minsize(900, 660)
+        self.server_url = DEFAULT_SERVER
+        self.mining_thread = None
+        self.build_interface()
 
-def check_balance():
-    """Check wallet balance"""
-    try:
-        address = input(f"{Fore.YELLOW}Enter wallet address: {Style.RESET_ALL}").strip()
+    def build_interface(self):
+        self.grid_columnconfigure(1, weight=1)
+        self.grid_rowconfigure(0, weight=1)
+
+        sidebar = ctk.CTkFrame(self, width=220, corner_radius=0)
+        sidebar.grid(row=0, column=0, sticky="nsew")
+        sidebar.grid_rowconfigure(6, weight=1)
+
+        ctk.CTkLabel(sidebar, text="PieraCoin Wallet", font=ctk.CTkFont(size=20, weight="bold")).grid(row=0, column=0, padx=20, pady=(20, 10))
+        ctk.CTkButton(sidebar, text="Generate Wallet", command=self.generate_wallet, fg_color="#1f6aa5").grid(row=1, column=0, padx=20, pady=8, sticky="ew")
+        ctk.CTkButton(sidebar, text="Check Balance", command=self.check_balance, fg_color="#1f6aa5").grid(row=2, column=0, padx=20, pady=8, sticky="ew")
+        ctk.CTkButton(sidebar, text="View Transaction History", command=self.load_history, fg_color="#1f6aa5").grid(row=3, column=0, padx=20, pady=8, sticky="ew")
+        ctk.CTkButton(sidebar, text="Check Server Health", command=self.check_server_health, fg_color="#1f6aa5").grid(row=4, column=0, padx=20, pady=8, sticky="ew")
+        ctk.CTkLabel(sidebar, text="Server URL:").grid(row=5, column=0, padx=20, pady=(20, 4), sticky="w")
+        self.server_entry = ctk.CTkEntry(sidebar, placeholder_text=self.server_url)
+        self.server_entry.grid(row=6, column=0, padx=20, pady=(0, 20), sticky="ew")
+        ctk.CTkButton(sidebar, text="Update Server", command=self.update_server).grid(row=7, column=0, padx=20, pady=(0, 20), sticky="ew")
+
+        self.tabview = ctk.CTkTabview(self, width=700)
+        self.tabview.grid(row=0, column=1, padx=20, pady=20, sticky="nsew")
+        self.tabview.add("Wallet")
+        self.tabview.add("Mining")
+        self.tabview.add("Balance")
+        self.tabview.add("History")
+
+        self.build_wallet_tab()
+        self.build_mining_tab()
+        self.build_balance_tab()
+        self.build_history_tab()
+
+    def build_wallet_tab(self):
+        tab = self.tabview.tab("Wallet")
+        tab.grid_columnconfigure(0, weight=1)
+
+        self.mnemonic_text = ctk.CTkTextbox(tab, width=660, height=200, fg_color="#1b1b1b", corner_radius=12)
+        self.mnemonic_text.grid(row=0, column=0, padx=20, pady=20, sticky="nsew")
+
+        self.address_label = ctk.CTkLabel(tab, text="Address: -", wraplength=660)
+        self.address_label.grid(row=1, column=0, padx=20, pady=(0, 16), sticky="w")
+
+    def build_mining_tab(self):
+        tab = self.tabview.tab("Mining")
+        tab.grid_columnconfigure(0, weight=1)
+
+        ctk.CTkLabel(tab, text="Miner Address", font=ctk.CTkFont(size=16, weight="bold")).grid(row=0, column=0, padx=20, pady=(20, 8), sticky="w")
+        self.mine_address_entry = ctk.CTkEntry(tab, placeholder_text="Enter your wallet address")
+        self.mine_address_entry.grid(row=1, column=0, padx=20, pady=(0, 16), sticky="ew")
+
+        self.mine_progress = ctk.CTkProgressBar(tab, width=660)
+        self.mine_progress.grid(row=2, column=0, padx=20, pady=(0, 16), sticky="ew")
+        self.mine_progress.set(0)
+
+        self.mine_button = ctk.CTkButton(tab, text="Start Mining", command=self.start_mining, fg_color="#1f6aa5")
+        self.mine_button.grid(row=3, column=0, padx=20, pady=8, sticky="ew")
+
+        self.mine_status = ctk.CTkLabel(tab, text="Press start to begin mining.")
+        self.mine_status.grid(row=4, column=0, padx=20, pady=10, sticky="w")
+
+    def build_balance_tab(self):
+        tab = self.tabview.tab("Balance")
+        tab.grid_columnconfigure(0, weight=1)
+
+        self.balance_address_entry = ctk.CTkEntry(tab, placeholder_text="Enter address to check balance")
+        self.balance_address_entry.grid(row=0, column=0, padx=20, pady=(20, 12), sticky="ew")
+
+        ctk.CTkButton(tab, text="Query Balance", command=self.check_balance, fg_color="#1f6aa5").grid(row=1, column=0, padx=20, pady=8, sticky="ew")
+
+        self.balance_result = ctk.CTkTextbox(tab, width=660, height=220, fg_color="#1b1b1b", corner_radius=12)
+        self.balance_result.grid(row=2, column=0, padx=20, pady=12, sticky="nsew")
+
+    def build_history_tab(self):
+        tab = self.tabview.tab("History")
+        tab.grid_columnconfigure(0, weight=1)
+
+        ctk.CTkButton(tab, text="Refresh History", command=self.load_history, fg_color="#1f6aa5").grid(row=0, column=0, padx=20, pady=(20, 10), sticky="ew")
+        self.history_text = ctk.CTkTextbox(tab, width=660, height=500, fg_color="#1b1b1b", corner_radius=12)
+        self.history_text.grid(row=1, column=0, padx=20, pady=10, sticky="nsew")
+
+    def update_server(self):
+        server = self.server_entry.get().strip()
+        if server:
+            self.server_url = server.rstrip("/")
+            messagebox.showinfo("Server Updated", f"Server set to {self.server_url}")
+
+    def api_get(self, path):
+        response = requests.get(f"{self.server_url}{path}", timeout=15)
+        response.raise_for_status()
+        return response.json()
+
+    def api_post(self, path, payload):
+        response = requests.post(f"{self.server_url}{path}", json=payload, timeout=20)
+        response.raise_for_status()
+        return response.json()
+
+    def generate_wallet(self):
+        def task():
+            try:
+                data = self.api_get("/wallet/generate")
+                self.mnemonic_text.delete("0.0", ctk.END)
+                self.mnemonic_text.insert(ctk.END, data.get("mnemonic", ""))
+                self.address_label.configure(text=f"Address: {data.get('address', '-')}")
+            except Exception as err:
+                messagebox.showerror("Error", f"Could not generate wallet: {err}")
+
+        threading.Thread(target=task, daemon=True).start()
+
+    def start_mining(self):
+        address = self.mine_address_entry.get().strip()
         if not address:
-            print(f"{Fore.RED}✗ Address cannot be empty{Style.RESET_ALL}")
+            messagebox.showwarning("Mining", "Please enter a miner address first.")
             return
-        
-        print(f"{Fore.YELLOW}Checking balance...{Style.RESET_ALL}")
-        response = requests.get(
-            f"{SERVER_URL}/balance/{address}",
-            timeout=10
-        )
-        if response.status_code == 200:
-            data = response.json()
-            print(f"{Fore.GREEN}✓ Balance Information:{Style.RESET_ALL}")
-            print(json.dumps(data, indent=2))
-        elif response.status_code == 404:
-            print(f"{Fore.YELLOW}Address not found{Style.RESET_ALL}")
-        else:
-            print(f"{Fore.RED}✗ Error: {response.status_code}{Style.RESET_ALL}")
-    except requests.exceptions.ConnectionError:
-        print(f"{Fore.RED}✗ Error: Cannot connect to server at {SERVER_URL}{Style.RESET_ALL}")
-    except Exception as e:
-        print(f"{Fore.RED}✗ Error: {str(e)}{Style.RESET_ALL}")
-
-def view_blockchain():
-    """View blockchain information"""
-    try:
-        print(f"{Fore.YELLOW}Fetching blockchain...{Style.RESET_ALL}")
-        response = requests.get(
-            f"{SERVER_URL}/chain",
-            timeout=10
-        )
-        if response.status_code == 200:
-            data = response.json()
-            print(f"\n{Fore.GREEN}✓ Blockchain Information:{Style.RESET_ALL}")
-            print(f"Total Blocks: {data.get('blocks', 0)}")
-            
-            blocks = data.get('chain', [])
-            if blocks:
-                print(f"\n{Fore.CYAN}Latest Block:{Style.RESET_ALL}")
-                latest = blocks[-1]
-                print(f"  Index: {latest.get('index', 'N/A')}")
-                print(f"  Hash: {latest.get('hash', 'N/A')[:32]}...")
-                print(f"  Timestamp: {latest.get('timestamp', 'N/A')}")
-                print(f"  Transactions: {len(latest.get('transactions', []))}")
-        else:
-            print(f"{Fore.RED}✗ Error: {response.status_code}{Style.RESET_ALL}")
-    except requests.exceptions.ConnectionError:
-        print(f"{Fore.RED}✗ Error: Cannot connect to server at {SERVER_URL}{Style.RESET_ALL}")
-    except Exception as e:
-        print(f"{Fore.RED}✗ Error: {str(e)}{Style.RESET_ALL}")
-
-def send_transaction():
-    """Send a transaction"""
-    try:
-        from_addr = input(f"{Fore.YELLOW}From address: {Style.RESET_ALL}").strip()
-        to_addr = input(f"{Fore.YELLOW}To address: {Style.RESET_ALL}").strip()
-        amount = input(f"{Fore.YELLOW}Amount: {Style.RESET_ALL}").strip()
-        
-        if not all([from_addr, to_addr, amount]):
-            print(f"{Fore.RED}✗ All fields are required{Style.RESET_ALL}")
+        if self.mining_thread and self.mining_thread.is_alive():
+            messagebox.showwarning("Mining", "Mining is already running.")
             return
-        
+        self.mining_thread = threading.Thread(target=self.run_mining, args=(address,), daemon=True)
+        self.mining_thread.start()
+
+    def run_mining(self, miner_address):
+        duration = 45.0
+        start_time = time.time()
+        self.mine_status.configure(text="Mining in progress...")
+        self.mine_progress.set(0)
+
+        while time.time() - start_time < duration:
+            hashlib.sha256(f"{miner_address}-{time.time()}".encode()).hexdigest()
+            progress = min(1.0, (time.time() - start_time) / duration)
+            self.mine_progress.set(progress)
+            time.sleep(0.02)
+
         try:
-            amount = float(amount)
-        except ValueError:
-            print(f"{Fore.RED}✗ Invalid amount{Style.RESET_ALL}")
+            data = self.api_post("/mine", {"miner_address": miner_address})
+            self.mine_status.configure(text="Mining completed successfully.")
+            messagebox.showinfo("Mining Complete", f"Block mined and reward credited.\n{json.dumps(data, indent=2)}")
+        except Exception as err:
+            self.mine_status.configure(text="Mining finished with error.")
+            messagebox.showerror("Mining Error", str(err))
+        finally:
+            self.mine_progress.set(1)
+
+    def check_balance(self):
+        address = self.balance_address_entry.get().strip()
+        if not address:
+            messagebox.showwarning("Balance", "Please enter an address.")
             return
-        
-        transaction = {
-            "from": from_addr,
-            "to": to_addr,
-            "amount": amount,
-            "fee": 0.001
-        }
-        
-        print(f"{Fore.YELLOW}Sending transaction...{Style.RESET_ALL}")
-        response = requests.post(
-            f"{SERVER_URL}/transaction",
-            json=transaction,
-            timeout=10
-        )
-        if response.status_code == 200:
-            print(f"{Fore.GREEN}✓ Transaction submitted!{Style.RESET_ALL}")
-            print(json.dumps(response.json(), indent=2))
-        else:
-            print(f"{Fore.RED}✗ Error: {response.status_code}{Style.RESET_ALL}")
-            print(response.text)
-    except requests.exceptions.ConnectionError:
-        print(f"{Fore.RED}✗ Error: Cannot connect to server at {SERVER_URL}{Style.RESET_ALL}")
-    except Exception as e:
-        print(f"{Fore.RED}✗ Error: {str(e)}{Style.RESET_ALL}")
 
-def check_server_health():
-    """Check if server is running"""
-    try:
-        response = requests.get(
-            f"{SERVER_URL}/health",
-            timeout=5
-        )
-        if response.status_code == 200:
-            print(f"{Fore.GREEN}✓ Server is running{Style.RESET_ALL}")
-            print(json.dumps(response.json(), indent=2))
-        else:
-            print(f"{Fore.RED}✗ Server returned error: {response.status_code}{Style.RESET_ALL}")
-    except requests.exceptions.ConnectionError:
-        print(f"{Fore.RED}✗ Server not running at {SERVER_URL}{Style.RESET_ALL}")
-    except Exception as e:
-        print(f"{Fore.RED}✗ Error: {str(e)}{Style.RESET_ALL}")
+        def task():
+            try:
+                data = self.api_get(f"/balance/{address}")
+                self.balance_result.delete("0.0", ctk.END)
+                self.balance_result.insert(ctk.END, json.dumps(data, indent=2))
+            except Exception as err:
+                messagebox.showerror("Error", str(err))
 
-def main():
-    """Main menu loop"""
-    print_banner()
-    print(f"{Fore.CYAN}Server: {SERVER_URL}\n{Style.RESET_ALL}")
-    
-    while True:
-        print(f"\n{Fore.CYAN}{'='*60}")
-        print("User Options:")
-        print("1. Generate New Wallet")
-        print("2. Check Balance")
-        print("3. Send Transaction")
-        print("4. View Blockchain")
-        print("5. Check Server Health")
-        print("6. Exit")
-        print(f"{'='*60}{Style.RESET_ALL}")
-        
-        choice = input(f"\n{Fore.YELLOW}Select option (1-6): {Style.RESET_ALL}").strip()
-        
-        if choice == "1":
-            generate_wallet()
-        elif choice == "2":
-            check_balance()
-        elif choice == "3":
-            send_transaction()
-        elif choice == "4":
-            view_blockchain()
-        elif choice == "5":
-            check_server_health()
-        elif choice == "6":
-            print(f"{Fore.GREEN}Thank you for using PieraCoin!{Style.RESET_ALL}")
-            break
-        else:
-            print(f"{Fore.RED}Invalid option. Please select 1-6.{Style.RESET_ALL}")
+        threading.Thread(target=task, daemon=True).start()
+
+    def load_history(self):
+        def task():
+            try:
+                data = self.api_get("/transactions")
+                self.history_text.delete("0.0", ctk.END)
+                for tx in data.get("transactions", []):
+                    self.history_text.insert(ctk.END, json.dumps(tx, indent=2) + "\n---\n")
+            except Exception as err:
+                messagebox.showerror("Error", str(err))
+
+        threading.Thread(target=task, daemon=True).start()
+
+    def check_server_health(self):
+        def task():
+            try:
+                data = self.api_get("/health")
+                messagebox.showinfo("Server Health", json.dumps(data, indent=2))
+            except Exception as err:
+                messagebox.showerror("Error", str(err))
+
+        threading.Thread(target=task, daemon=True).start()
 
 if __name__ == "__main__":
-    try:
-        main()
-    except KeyboardInterrupt:
-        print(f"\n{Fore.YELLOW}Wallet closed.{Style.RESET_ALL}")
+    app = UserWalletApp()
+    app.mainloop()

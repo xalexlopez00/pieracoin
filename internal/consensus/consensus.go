@@ -46,7 +46,7 @@ func NewConsensus(bc *blockchain.Blockchain, logger zerolog.Logger) *Consensus {
 	}
 }
 
-func (c *Consensus) MineBlock() *blockchain.Block {
+func (c *Consensus) MineBlock(minerAddress string) *blockchain.Block {
 	latest := c.blockchain.GetLatestBlock()
 	newBlock := blockchain.Block{
 		Index:        latest.Index + 1,
@@ -54,6 +54,19 @@ func (c *Consensus) MineBlock() *blockchain.Block {
 		Transactions: []blockchain.Transaction{},
 		PrevHash:     latest.Hash,
 		Difficulty:   c.adjustDifficulty(),
+	}
+
+	if minerAddress != "" {
+		reward := blockchain.Transaction{
+			ID:        generateTransactionID(minerAddress, time.Now()),
+			From:      "NETWORK",
+			To:        minerAddress,
+			Amount:    1.0,
+			Fee:       0,
+			Timestamp: time.Now(),
+			Nonce:     uint64(time.Now().UnixNano()),
+		}
+		newBlock.Transactions = append(newBlock.Transactions, reward)
 	}
 
 	// Add transactions from mempool
@@ -66,6 +79,11 @@ func (c *Consensus) MineBlock() *blockchain.Block {
 
 	newBlock.Hash, newBlock.Nonce = c.proofOfWork(newBlock)
 	return &newBlock
+}
+
+func generateTransactionID(seed string, timestamp time.Time) string {
+	payload := []byte(seed + timestamp.String())
+	return crypto.ToHex(crypto.HashDoubleSHA256(payload))
 }
 
 func (c *Consensus) proofOfWork(block blockchain.Block) (string, uint64) {

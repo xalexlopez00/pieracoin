@@ -36,3 +36,11 @@ Thumbs.db
 *.db
 blocks/
 ledger/
+
+# Python PyInstaller
+*.spec
+build/
+dist/
+*.pyc
+__pycache__/
+*.egg-info/
