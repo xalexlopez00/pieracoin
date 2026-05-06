@@ -1,0 +1,9 @@
+services:
+  - type: worker
+    name: pieracoin-discord-bot
+    env: docker
+    branch: main
+    dockerfilePath: discord_bot/Dockerfile
+    path: discord_bot
+    plan: starter
+    autoDeploy: true

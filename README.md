@@ -121,6 +121,54 @@ Public-facing wallet application for regular users.
 python user_wallet.py
 ```
 
+### Discord Bot (discord_bot/)
+
+Bot independiente para administrar una economía de PieraCoin dentro de tu servidor Discord.
+
+**Features:**
+- Wallet y banco local para cada usuario
+- Pagos entre miembros
+- Recompensa diaria
+- Ruleta de apuestas
+- Blackjack contra el dealer
+- Ranking de riqueza
+
+**Run local:**
+```bash
+cd discord_bot
+python bot.py
+```
+
+**Pruebas locales:**
+1. Copia `discord_bot/.env.example` a `discord_bot/.env`.
+2. Configura `DISCORD_TOKEN` con el token de tu bot.
+3. Cambia `DATABASE_FILE` a `economy-test.json` si quieres pruebas separadas.
+4. Ejecuta el bot y prueba comandos desde Discord:
+   - `!help`
+   - `!balance`
+   - `!deposit 100`
+   - `!withdraw 50`
+   - `!pay @usuario 25`
+   - `!daily`
+   - `!roulette 50 rojo`
+   - `!blackjack 100`
+
+**Render:**
+- El servicio está definido en `render.yaml`.
+- Usa el `Dockerfile` en `discord_bot/Dockerfile`.
+- Configura `DISCORD_TOKEN` como variable de entorno en Render.
+- Opcionales: `BOT_PREFIX`, `DATABASE_FILE`, `START_BALANCE`, `DAILY_REWARD`.
+- El bot se debe desplegar como servicio tipo `Background Worker`.
+
+### Invitar el bot a tu servidor
+1. Crea una aplicación en el Discord Developer Portal.
+2. Añade un bot a la aplicación.
+3. Copia el `Client ID` y usa el enlace:
+   `https://discord.com/oauth2/authorize?client_id=TU_CLIENT_ID&scope=bot&permissions=19456`
+4. Selecciona el servidor y autoriza el bot.
+
+> El token nunca debe subirse a GitHub. Usa variables de entorno en Render.
+
 ## Configuration
 
 ### Environment Variables

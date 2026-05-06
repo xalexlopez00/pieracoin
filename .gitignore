@@ -47,3 +47,7 @@ dist/
 *.pyc
 __pycache__/
 *.egg-info/
+
+# Discord bot local files
+/discord_bot/.env
+/discord_bot/economy.json
